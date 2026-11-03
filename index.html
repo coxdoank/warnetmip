@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aplikasi Pencatatan Iuran & Kas Warga / Warnet</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <!-- Inter Font -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap">
+
+  <!-- Alpine.js v3 CDN -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.5/dist/cdn.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          },
+        }
+      }
+    }
+  </script>
+
+  <style>
+    [x-cloak] { display: none !important; }
+    
+    ::-webkit-scrollbar {
+      height: 6px;
+      width: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+  </style>
+</head>
+<body class="bg-slate-100 font-sans text-slate-800 min-h-screen flex flex-col antialiased" x-data="iuranApp()" x-init="initApp()">
+
+  <!-- Toast Notification Bar -->
+  <div class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none">
+    <template x-for="toast in toasts" :key="toast.id">
+      <div x-show="toast.visible" 
+           x-transition:enter="transition ease-out duration-300 transform translate-y-2 opacity-0"
+           x-transition:enter-start="translate-y-2 opacity-0"
+           x-transition:enter-end="translate-y-0 opacity-100"
+           x-transition:leave="transition ease-in duration-200 transform translate-y-2 opacity-0"
+           :class="{
+              'bg-emerald-600 text-white': toast.type === 'success',
+              'bg-rose-600 text-white': toast.type === 'error',
+              'bg-amber-500 text-white': toast.type === 'warning',
+              'bg-blue-600 text-white': toast.type === 'info'
+           }"
+           class="px-4 py-3 rounded-xl shadow-lg flex items-center gap-3 text-xs font-semibold pointer-events-auto">
+        <i :class="{
+            'fa-solid fa-circle-check': toast.type === 'success',
+            'fa-solid fa-triangle-exclamation': toast.type === 'error' || toast.type === 'warning',
+            'fa-solid fa-circle-info': toast.type === 'info'
+        }"></i>
+        <span x-text="toast.message"></span>
+      </div>
+    </template>
+  </div>
+
+  <!-- Header -->
+  <header class="bg-slate-900 text-white sticky top-0 z-30 shadow-md">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-16">
+        <div class="flex items-center gap-3">
+          <div class="bg-blue-600 p-2 rounded-xl text-white flex items-center justify-center w-10 h-10 shadow-sm">
+            <i class="fa-solid fa-wallet text-lg"></i>
+          </div>
+          <div>
+            <h1 class="font-bold text-base sm:text-lg leading-tight">Kas Iuran Warnet</h1>
+            <p class="text-[11px] text-slate-400">Pencatatan Iuran & Kas Operasional</p>
+          </div>
+        </div>
+        
+        <!-- Controls & Utilities -->
+        <div class="flex items-center gap-2">
+          <!-- Year Selector -->
+          <div class="flex items-center bg-slate-800 rounded-lg px-2 py-1 border border-slate-700">
+            <button @click="changeYear(-1)" class="text-slate-400 hover:text-white px-2 py-1 transition">
+              <i class="fa-solid fa-chevron-left text-xs"></i>
+            </button>
+            <span class="text-xs sm:text-sm font-bold px-2 text-blue-400" x-text="selectedYear"></span>
+            <button @click="changeYear(1)" class="text-slate-400 hover:text-white px-2 py-1 transition">
+              <i class="fa-solid fa-chevron-right text-xs"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Area -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full space-y-6">
+
+    <!-- Dashboard Summary Cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <!-- Total Saldo Kas -->
+      <div class="bg-white rounded-2xl shadow-sm p-5 border border-slate-200/80 flex items-center justify-between">
+        <div>
+          <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Sisa Saldo Kas</p>
+          <h3 class="text-2xl font-black mt-1" :class="calculateBalance() >= 0 ? 'text-slate-900' : 'text-rose-600'" x-text="formatRupiah(calculateBalance())"></h3>
+          <p class="text-xs text-slate-500 mt-1">Total Kas Tersedia</p>
+        </div>
+        <div class="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center text-xl font-bold">
+          <i class="fa-solid fa-vault"></i>
+        </div>
+      </div>
+
+      <!-- Total Pemasukan Tahun Ini -->
+      <div class="bg-white rounded-2xl shadow-sm p-5 border border-slate-200/80 flex items-center justify-between">
+        <div>
+          <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Pemasukan (<span x-text="selectedYear"></span>)</p>
+          <h3 class="text-2xl font-black mt-1 text-emerald-600" x-text="formatRupiah(calculateTotalIncome())"></h3>
+          <p class="text-xs text-slate-500 mt-1">Iuran + Kas Masuk</p>
+        </div>
+        <div class="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center text-xl font-bold">
+          <i class="fa-solid fa-arrow-trend-up"></i>
+        </div>
+      </div>
+
+      <!-- Total Pengeluaran Tahun Ini -->
+      <div class="bg-white rounded-2xl shadow-sm p-5 border border-slate-200/80 flex items-center justify-between">
+        <div>
+          <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Pengeluaran (<span x-text="selectedYear"></span>)</p>
+          <h3 class="text-2xl font-black mt-1 text-rose-600" x-text="formatRupiah(calculateTotalExpense())"></h3>
+          <p class="text-xs text-slate-500 mt-1">Biaya Operasional</p>
+        </div>
+        <div class="w-12 h-12 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center text-xl font-bold">
+          <i class="fa-solid fa-arrow-trend-down"></i>
+        </div>
+      </div>
+
+      <!-- Status Bulan Ini -->
+      <div class="bg-white rounded-2xl shadow-sm p-5 border border-slate-200/80 flex items-center justify-between">
+        <div>
+          <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Status (<span x-text="months[currentMonth - 1]"></span>)</p>
+          <div class="flex items-center gap-2 mt-1">
+            <span class="text-lg font-extrabold text-emerald-600" x-text="currentMonthPaidCount + ' Lunas'"></span>
+            <span class="text-slate-300">/</span>
+            <span class="text-lg font-extrabold text-rose-500" x-text="(houses.length - currentMonthPaidCount) + ' Belum'"></span>
+          </div>
+          <p class="text-xs text-slate-500 mt-1" x-text="'Dari total ' + houses.length + ' Anggota'"></p>
+        </div>
+        <div class="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center text-xl font-bold">
+          <i class="fa-solid fa-chart-pie"></i>
+        </div>
+      </div>
+    </div>
+
+    <!-- BACKUP & RESTORE BAR -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+      <div class="flex items-center gap-2.5 text-xs text-slate-500 w-full sm:w-auto">
+        <div class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-sm">
+          <i class="fa-solid fa-cloud-arrow-up"></i>
+        </div>
+        <div>
+          <div class="font-bold text-slate-700">Backup Local Data</div>
+          <div class="text-[11px] text-slate-400" x-text="'Terakhir Backup: ' + (lastBackupDate ? lastBackupDate : 'Belum Pernah')"></div>
+        </div>
+      </div>
+      
+      <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+        <!-- Backup to File Button -->
+        <button @click="backupData()" class="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition shadow-sm">
+          <i class="fa-solid fa-download"></i> Unduh File Backup JSON
+        </button>
+
+        <!-- Restore JSON Button -->
+        <label class="flex-1 sm:flex-none bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer flex items-center justify-center gap-2 transition shadow-sm">
+          <i class="fa-solid fa-file-import"></i> Restore Data JSON
+          <input type="file" accept=".json" @change="importData($event)" class="hidden">
+        </label>
+      </div>
+    </div>
+
+    <!-- TAB NAVIGATION -->
+    <div class="border-b border-slate-200 flex space-x-4 bg-white px-4 rounded-2xl shadow-sm">
+      <button @click="activeTab = 'matrix'" 
+              :class="activeTab === 'matrix' ? 'border-blue-600 text-blue-600 font-bold' : 'border-transparent text-slate-500 hover:text-slate-700'" 
+              class="py-3.5 px-2 border-b-2 text-xs sm:text-sm flex items-center gap-2 transition">
+        <i class="fa-solid fa-table-cells"></i> Matriks Iuran
+      </button>
+      <button @click="activeTab = 'cashflow'" 
+              :class="activeTab === 'cashflow' ? 'border-blue-600 text-blue-600 font-bold' : 'border-transparent text-slate-500 hover:text-slate-700'" 
+              class="py-3.5 px-2 border-b-2 text-xs sm:text-sm flex items-center gap-2 transition">
+        <i class="fa-solid fa-list-check"></i> Transaksi & Operasional
+      </button>
+      <button @click="activeTab = 'houses'" 
+              :class="activeTab === 'houses' ? 'border-blue-600 text-blue-600 font-bold' : 'border-transparent text-slate-500 hover:text-slate-700'" 
+              class="py-3.5 px-2 border-b-2 text-xs sm:text-sm flex items-center gap-2 transition">
+        <i class="fa-solid fa-users"></i> Data Anggota
+      </button>
+    </div>
+
+    <!-- TAB 1: MATRIKS IURAN (GRID VIEW) -->
+    <div x-show="activeTab === 'matrix'" class="space-y-4">
+      <!-- Toolbar -->
+      <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200/80 flex flex-col md:flex-row gap-3 justify-between items-center">
+        <div class="flex items-center gap-3 w-full md:w-auto">
+          <div class="relative w-full md:w-64">
+            <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+            <input type="text" x-model="searchQuery" placeholder="Cari nama / blok..." class="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500">
+          </div>
+          <span class="text-[11px] text-slate-400 hidden sm:inline">* Klik tombol bulan untuk detail/bukti bayar</span>
+        </div>
+
+        <div class="flex items-center gap-3 w-full md:w-auto justify-end">
+          <span class="flex items-center gap-1.5 text-xs text-slate-600 font-medium">
+            <span class="w-3 h-3 bg-emerald-500 rounded-full inline-block"></span> Lunas
+          </span>
+          <span class="flex items-center gap-1.5 text-xs text-slate-600 font-medium">
+            <span class="w-3 h-3 bg-rose-400 rounded-full inline-block"></span> Belum
+          </span>
+          <span class="flex items-center gap-1.5 text-xs text-slate-600 font-medium">
+            <i class="fa-solid fa-paperclip text-slate-500"></i> Ada Bukti
+          </span>
+        </div>
+      </div>
+
+      <!-- Matrix Table -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-x-auto">
+        <table class="w-full text-left border-collapse min-w-[950px]">
+          <thead>
+            <tr class="bg-slate-50/80 border-b border-slate-200 text-[11px] text-slate-500 uppercase font-semibold">
+              <th class="p-3.5 sticky left-0 bg-slate-50 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] w-44 z-10">Blok / Nama</th>
+              <template x-for="(month, idx) in months" :key="idx">
+                <th class="p-3 text-center w-20" :class="{'bg-blue-50/60 text-blue-700 font-bold': idx + 1 === currentMonth}">
+                  <span x-text="month"></span>
+                </th>
+              </template>
+              <th class="p-3.5 text-center w-24">WA Tagihan</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100 text-xs">
+            <template x-for="house in filteredHouses" :key="house.id">
+              <tr class="hover:bg-slate-50/80 transition">
+                <!-- Sticky Name Column -->
+                <td class="p-3.5 font-medium sticky left-0 bg-white border-r border-slate-100 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] z-10">
+                  <div class="font-bold text-slate-800" x-text="house.name"></div>
+                  <div class="text-[10px] text-slate-400 font-mono" x-text="house.block"></div>
+                </td>
+
+                <!-- Months Grid -->
+                <template x-for="(month, idx) in months" :key="idx">
+                  <td class="p-1.5 text-center" :class="{'bg-blue-50/20': idx + 1 === currentMonth}">
+                    <button @click="openPaymentModal(house, idx + 1)" 
+                            class="w-full py-2 px-1 rounded-lg font-semibold transition flex items-center justify-center gap-1 shadow-sm border text-[11px]"
+                            :class="getPaymentStatusClass(house.id, idx + 1)">
+                      <span x-text="isPaid(house.id, idx + 1) ? 'Lunas' : 'Belum'"></span>
+                      <template x-if="hasProof(house.id, idx + 1)">
+                        <i class="fa-solid fa-paperclip text-[10px] opacity-80"></i>
+                      </template>
+                    </button>
+                  </td>
+                </template>
+
+                <!-- WA Button -->
+                <td class="p-2 text-center">
+                  <button @click="generateWA(house)" class="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 p-2 rounded-lg text-xs font-medium transition" title="Kirim Tagihan WA">
+                    <i class="fa-brands fa-whatsapp text-sm"></i>
+                  </button>
+                </td>
+              </tr>
+            </template>
+            <tr x-show="filteredHouses.length === 0">
+              <td colspan="14" class="p-8 text-center text-slate-400">
+                <i class="fa-solid fa-folder-open text-3xl mb-2"></i>
+                <p>Tidak ada data ditemukan.</p>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB 2: TRANSAKSI & CASHFLOW -->
+    <div x-show="activeTab === 'cashflow'" class="space-y-4">
+      <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-4 rounded-2xl shadow-sm border border-slate-200/80 gap-3">
+        <div>
+          <h2 class="font-bold text-slate-800 text-base">Pencatatan Uang Masuk & Keluar</h2>
+          <p class="text-xs text-slate-500">Catat pengeluaran operasional (MyRepublic, Listrik, Maintenance) atau pemasukan lain.</p>
+        </div>
+        <button @click="openTrxModal()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-xl flex items-center gap-2 transition self-end sm:self-auto">
+          <i class="fa-solid fa-plus"></i> Catat Transaksi Baru
+        </button>
+      </div>
+
+      <!-- Transaction History Table -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="bg-slate-50 border-b border-slate-200 text-[11px] text-slate-500 uppercase font-semibold">
+                <th class="p-3.5">Tanggal</th>
+                <th class="p-3.5">Tipe</th>
+                <th class="p-3.5">Kategori</th>
+                <th class="p-3.5">Keterangan</th>
+                <th class="p-3.5 text-right">Nominal</th>
+                <th class="p-3.5 text-center">Aksi</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 text-xs">
+              <template x-for="trx in sortedTransactions" :key="trx.id">
+                <tr class="hover:bg-slate-50 transition">
+                  <td class="p-3.5 text-slate-600 whitespace-nowrap" x-text="formatDate(trx.date)"></td>
+                  <td class="p-3.5 whitespace-nowrap">
+                    <span :class="trx.type === 'IN' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-600 border-rose-200'" class="px-2 py-0.5 rounded text-[10px] font-bold border" x-text="trx.type === 'IN' ? 'Masuk' : 'Keluar'"></span>
+                  </td>
+                  <td class="p-3.5 font-medium text-slate-700" x-text="trx.category"></td>
+                  <td class="p-3.5 text-slate-600" x-text="trx.description"></td>
+                  <td class="p-3.5 text-right font-bold whitespace-nowrap" :class="trx.type === 'IN' ? 'text-emerald-600' : 'text-rose-600'">
+                    <span x-text="(trx.type === 'IN' ? '+ ' : '- ') + formatRupiah(trx.amount)"></span>
+                  </td>
+                  <td class="p-3.5 text-center whitespace-nowrap">
+                    <button @click="deleteTransaction(trx.id)" class="text-slate-400 hover:text-rose-600 p-1 transition">
+                      <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                  </td>
+                </tr>
+              </template>
+              <tr x-show="transactions.length === 0">
+                <td colspan="6" class="p-8 text-center text-slate-400">Belum ada riwayat transaksi.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: DATA ANGGOTA (CRUD) -->
+    <div x-show="activeTab === 'houses'" class="space-y-4">
+      <div class="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-slate-200/80">
+        <h2 class="font-bold text-slate-800 text-base">Daftar Rumah / Anggota</h2>
+        <button @click="openHouseModal()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-xl flex items-center gap-2 transition">
+          <i class="fa-solid fa-plus"></i> Tambah Anggota
+        </button>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <template x-for="house in houses" :key="house.id">
+          <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-4 flex flex-col justify-between hover:border-slate-300 transition">
+            <div>
+              <div class="flex justify-between items-start mb-2">
+                <span class="bg-blue-50 text-blue-700 text-xs font-bold px-2.5 py-1 rounded-md border border-blue-100" x-text="house.block"></span>
+                <span :class="house.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'" class="text-[10px] font-bold px-2 py-0.5 rounded uppercase" x-text="house.status === 'active' ? 'Aktif' : 'Non-aktif'"></span>
+              </div>
+              <h3 class="font-bold text-slate-800 text-base" x-text="house.name"></h3>
+              <p class="text-xs text-slate-500 mt-1 flex items-center gap-1.5">
+                <i class="fa-solid fa-phone text-slate-400"></i>
+                <span x-text="house.phone || 'Tidak ada nomor WA'"></span>
+              </p>
+              <p class="text-xs text-slate-500 mt-1 flex items-center gap-1.5">
+                <i class="fa-solid fa-coins text-slate-400"></i>
+                <span>Nominal: <strong x-text="formatRupiah(house.fee || defaultFee)"></strong> / bln</span>
+              </p>
+            </div>
+
+            <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+              <button @click="generateWA(house)" class="text-xs bg-emerald-50 text-emerald-700 hover:bg-emerald-100 px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1">
+                <i class="fa-brands fa-whatsapp"></i> WA
+              </button>
+              <button @click="openHouseModal(house)" class="text-xs bg-slate-100 text-slate-700 hover:bg-slate-200 px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1">
+                <i class="fa-solid fa-pen-to-square"></i> Edit
+              </button>
+              <button @click="deleteHouse(house.id)" class="text-xs bg-rose-50 text-rose-600 hover:bg-rose-100 px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1">
+                <i class="fa-solid fa-trash-can"></i>
+              </button>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- MODAL: PEMBAYARAN & UPLOAD BUKTI BAYAR -->
+  <div x-show="modalPayment.show" class="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4" x-cloak>
+    <div @click.outside="modalPayment.show = false" class="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden max-h-[90vh] flex flex-col">
+      <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+        <div>
+          <h3 class="font-bold text-slate-900 text-base" x-text="modalPayment.houseName"></h3>
+          <p class="text-xs text-slate-500" x-text="'Iuran Bulan: ' + months[modalPayment.month - 1] + ' ' + selectedYear"></p>
+        </div>
+        <button @click="modalPayment.show = false" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+
+      <div class="p-6 space-y-4 overflow-y-auto text-xs flex-1">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Status Pembayaran</label>
+          <div class="grid grid-cols-2 gap-2">
+            <button type="button" @click="modalPayment.form.status = 'paid'" :class="modalPayment.form.status === 'paid' ? 'bg-emerald-600 text-white font-bold' : 'bg-slate-100 text-slate-600'" class="py-2.5 rounded-xl transition">Lunas</button>
+            <button type="button" @click="modalPayment.form.status = 'unpaid'" :class="modalPayment.form.status === 'unpaid' ? 'bg-rose-600 text-white font-bold' : 'bg-slate-100 text-slate-600'" class="py-2.5 rounded-xl transition">Belum Lunas</button>
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Nominal (Rp)</label>
+          <input type="number" x-model.number="modalPayment.form.amount" class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:border-blue-500 font-semibold text-sm">
+        </div>
+
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Tanggal Pembayaran</label>
+          <input type="date" x-model="modalPayment.form.paid_date" class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:border-blue-500">
+        </div>
+
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Catatan / Metode Transfer</label>
+          <input type="text" placeholder="Misal: Transfer via BCA / Tunai" x-model="modalPayment.form.notes" class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:border-blue-500">
+        </div>
+
+        <!-- Lampiran Bukti Bayar (Base64 Canvas Compressed) -->
+        <div class="border-t border-slate-100 pt-3">
+          <label class="block font-semibold text-slate-700 mb-1">Foto Struk / Bukti Pembayaran</label>
+          
+          <template x-if="modalPayment.form.proof_image">
+            <div class="space-y-2 mt-2">
+              <img :src="modalPayment.form.proof_image" class="w-full h-44 object-cover rounded-xl border border-slate-200">
+              <div class="flex justify-between items-center">
+                <span class="text-[10px] text-emerald-600 font-semibold"><i class="fa-solid fa-circle-check"></i> Foto tersimpan & terkompresi</span>
+                <button type="button" @click="modalPayment.form.proof_image = null" class="text-rose-600 text-xs font-semibold flex items-center gap-1 hover:underline">
+                  <i class="fa-solid fa-trash-can"></i> Hapus Foto
+                </button>
+              </div>
+            </div>
+          </template>
+
+          <template x-if="!modalPayment.form.proof_image">
+            <div class="mt-1">
+              <input type="file" accept="image/*" @change="handleProofUpload($event)" class="w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer">
+              <p class="text-[10px] text-slate-400 mt-1.5">*Otomatis dikompresi agar ukuran simpanan & file backup tetap ringan (~30-60KB).</p>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <div class="px-6 py-4 border-t border-slate-100 flex justify-end gap-2 bg-slate-50">
+        <button type="button" @click="modalPayment.show = false" class="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-200 text-slate-700 hover:bg-slate-300">Batal</button>
+        <button type="button" @click="savePaymentModal()" class="px-4 py-2 rounded-xl text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 shadow-sm">Simpan Pembayaran</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: ADD / EDIT WARGA -->
+  <div x-show="modalHouse.show" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm" x-cloak>
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden" @click.outside="modalHouse.show = false">
+      <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+        <h3 class="font-bold text-slate-800" x-text="modalHouse.isEdit ? 'Edit Data Anggota' : 'Tambah Anggota Baru'"></h3>
+        <button @click="modalHouse.show = false" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <form @submit.prevent="saveHouse()" class="p-6 space-y-4 text-xs">
+        <div>
+          <label class="block font-semibold text-slate-600 uppercase mb-1">Blok / Nomor Rumah</label>
+          <input type="text" x-model="modalHouse.form.block" required placeholder="Contoh: A1 atau R-05" class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:border-blue-500">
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-600 uppercase mb-1">Nama Anggota</label>
+          <input type="text" x-model="modalHouse.form.name" required placeholder="Contoh: Feri" class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:border-blue-500">
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-600 uppercase mb-1">Nomor WhatsApp (628xxx)</label>
+          <input type="text" x-model="modalHouse.form.phone" placeholder="628123456789" class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:border-blue-500">
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-600 uppercase mb-1">Nominal Iuran Bulanan (Rp)</label>
+          <input type="number" x-model.number="modalHouse.form.fee" required placeholder="65000" class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:border-blue-500">
+        </div>
+        <div class="pt-4 flex justify-end gap-2">
+          <button type="button" @click="modalHouse.show = false" class="px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">Batal</button>
+          <button type="submit" class="px-4 py-2 font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl">Simpan Data</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: TRANSAKSI KAS -->
+  <div x-show="modalTrx.show" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm" x-cloak>
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden" @click.outside="modalTrx.show = false">
+      <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+        <h3 class="font-bold text-slate-800">Catat Transaksi Operasional Baru</h3>
+        <button @click="modalTrx.show = false" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <form @submit.prevent="saveTransaction()" class="p-6 space-y-4 text-xs">
+        <div>
+          <label class="block font-semibold text-slate-600 uppercase mb-1">Tipe Transaksi</label>
+          <div class="grid grid-cols-2 gap-2">
+            <button type="button" @click="modalTrx.form.type = 'IN'" :class="modalTrx.form.type === 'IN' ? 'bg-emerald-600 text-white font-bold' : 'bg-slate-100 text-slate-600'" class="py-2 rounded-xl transition">Pemasukan (+)</button>
+            <button type="button" @click="modalTrx.form.type = 'OUT'" :class="modalTrx.form.type === 'OUT' ? 'bg-rose-600 text-white font-bold' : 'bg-slate-100 text-slate-600'" class="py-2 rounded-xl transition">Pengeluaran (-)</button>
+          </div>
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-600 uppercase mb-1">Tanggal</label>
+          <input type="date" x-model="modalTrx.form.date" required class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:border-blue-500">
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-600 uppercase mb-1">Kategori Transaksi</label>
+          <select x-model="modalTrx.form.category" required class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:border-blue-500 font-medium">
+            <option value="" disabled>-- Pilih Kategori --</option>
+            <option value="Internet / ISP (MyRepublic)">Internet / ISP (MyRepublic)</option>
+            <option value="Listrik & Air">Listrik & Air</option>
+            <option value="Maintenance & Perbaikan">Maintenance & Perbaikan</option>
+            <option value="Pembelian Perangkat">Pembelian Perangkat</option>
+            <option value="Iuran / Kas Masuk">Iuran / Kas Masuk</option>
+            <option value="Lain-lain">Lain-lain</option>
+          </select>
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-600 uppercase mb-1">Nominal (Rp)</label>
+          <input type="number" x-model.number="modalTrx.form.amount" required placeholder="333000" class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:border-blue-500">
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-600 uppercase mb-1">Keterangan Detail</label>
+          <textarea x-model="modalTrx.form.description" rows="2" placeholder="Detail catatan transaksi..." class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:border-blue-500"></textarea>
+        </div>
+        <div class="pt-4 flex justify-end gap-2">
+          <button type="button" @click="modalTrx.show = false" class="px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">Batal</button>
+          <button type="submit" class="px-4 py-2 font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl">Simpan Transaksi</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-400 mt-auto">
+    <p>Aplikasi Pencatatan Iuran Warga & Kas Warnet &copy; 2026. 100% Offline-First.</p>
+  </footer>
+
+  <!-- APPLICATION JAVASCRIPT STATE ENGINE -->
+  <script>
+    function iuranApp() {
+      return {
+        activeTab: 'matrix',
+        selectedYear: new Date().getFullYear(),
+        currentMonth: new Date().getMonth() + 1,
+        defaultFee: 65000,
+        searchQuery: '',
+        months: ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'],
+        lastBackupDate: null,
+        toasts: [],
+        
+        // Data Collections
+        houses: [],
+        payments: [],
+        transactions: [],
+
+        // Modals State
+        modalPayment: {
+          show: false,
+          houseId: '',
+          houseName: '',
+          month: 1,
+          form: { status: 'paid', amount: 65000, paid_date: '', notes: '', proof_image: null }
+        },
+        modalHouse: {
+          show: false,
+          isEdit: false,
+          form: { id: '', block: '', name: '', phone: '', fee: 65000, status: 'active' }
+        },
+        modalTrx: {
+          show: false,
+          form: { type: 'OUT', date: new Date().toISOString().split('T')[0], category: 'Internet / ISP (MyRepublic)', amount: 0, description: '' }
+        },
+
+        // INIT APP & LOCALSTORAGE
+        initApp() {
+          this.loadFromLocalStorage();
+          if (this.houses.length === 0) {
+            this.seedDefaultData();
+          }
+        },
+
+        seedDefaultData() {
+          this.houses = [
+            { id: 'H01', block: 'A1', name: 'Feri', phone: '6281234567891', fee: 65000, status: 'active' },
+            { id: 'H02', block: 'A2', name: 'Randi', phone: '6281234567892', fee: 65000, status: 'active' },
+            { id: 'H03', block: 'A3', name: 'Harry', phone: '6281234567893', fee: 65000, status: 'active' },
+            { id: 'H04', block: 'A4', name: 'Wira', phone: '6281234567894', fee: 65000, status: 'active' },
+            { id: 'H05', block: 'A5', name: 'Ade', phone: '6281234567895', fee: 65000, status: 'active' },
+            { id: 'H06', block: 'A6', name: 'Walker', phone: '6281234567896', fee: 65000, status: 'active' },
+            { id: 'H07', block: 'A7', name: 'Boy', phone: '6281234567897', fee: 65000, status: 'active' }
+          ];
+
+          this.transactions = [
+            { id: 'TRX-101', date: '2026-01-05', type: 'IN', category: 'Iuran / Kas Masuk', amount: 455000, description: 'Iuran Januari All Member' },
+            { id: 'TRX-102', date: '2026-01-10', type: 'OUT', category: 'Internet / ISP (MyRepublic)', amount: 333000, description: 'Pembayaran MyRepublic 100Mbps' },
+            { id: 'TRX-103', date: '2026-01-15', type: 'OUT', category: 'Maintenance & Perbaikan', amount: 50000, description: 'Maintenance & Listrik' }
+          ];
+
+          this.payments = [
+            { house_id: 'H01', year: 2026, month: 1, status: 'paid', amount: 65000 },
+            { house_id: 'H02', year: 2026, month: 1, status: 'paid', amount: 65000 },
+            { house_id: 'H03', year: 2026, month: 1, status: 'paid', amount: 65000 },
+            { house_id: 'H04', year: 2026, month: 1, status: 'paid', amount: 65000 },
+            { house_id: 'H05', year: 2026, month: 1, status: 'paid', amount: 65000 },
+            { house_id: 'H06', year: 2026, month: 1, status: 'paid', amount: 65000 },
+            { house_id: 'H07', year: 2026, month: 1, status: 'paid', amount: 65000 }
+          ];
+
+          this.saveToLocalStorage();
+          this.showToast('Data bawaan dimuat!', 'info');
+        },
+
+        loadFromLocalStorage() {
+          try {
+            const h = localStorage.getItem('iuran_houses');
+            const p = localStorage.getItem('iuran_payments');
+            const t = localStorage.getItem('iuran_transactions');
+            const b = localStorage.getItem('iuran_last_backup');
+            if (h) this.houses = JSON.parse(h);
+            if (p) this.payments = JSON.parse(p);
+            if (t) this.transactions = JSON.parse(t);
+            if (b) this.lastBackupDate = b;
+          } catch(e) {
+            console.error('Failed loading localStorage:', e);
+          }
+        },
+
+        saveToLocalStorage() {
+          localStorage.setItem('iuran_houses', JSON.stringify(this.houses));
+          localStorage.setItem('iuran_payments', JSON.stringify(this.payments));
+          localStorage.setItem('iuran_transactions', JSON.stringify(this.transactions));
+          if (this.lastBackupDate) localStorage.setItem('iuran_last_backup', this.lastBackupDate);
+        },
+
+        // GETTERS
+        get filteredHouses() {
+          if (!this.searchQuery) return this.houses;
+          const q = this.searchQuery.toLowerCase();
+          return this.houses.filter(h => h.name.toLowerCase().includes(q) || h.block.toLowerCase().includes(q));
+        },
+
+        get sortedTransactions() {
+          return [...this.transactions].sort((a,b) => new Date(b.date) - new Date(a.date));
+        },
+
+        get currentMonthPaidCount() {
+          return this.houses.filter(h => this.isPaid(h.id, this.currentMonth)).length;
+        },
+
+        changeYear(delta) {
+          this.selectedYear += delta;
+        },
+
+        // MATRIX LOGIC
+        isPaid(houseId, monthNum) {
+          return this.payments.some(p => p.house_id === houseId && p.year === this.selectedYear && p.month === monthNum && p.status === 'paid');
+        },
+
+        hasProof(houseId, monthNum) {
+          const rec = this.payments.find(p => p.house_id === houseId && p.year === this.selectedYear && p.month === monthNum);
+          return rec && rec.proof_image ? true : false;
+        },
+
+        getPaymentStatusClass(houseId, monthNum) {
+          return this.isPaid(houseId, monthNum)
+            ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+            : 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100';
+        },
+
+        // MODAL DETAIL PEMBAYARAN
+        openPaymentModal(house, monthNum) {
+          const rec = this.payments.find(p => p.house_id === house.id && p.year === this.selectedYear && p.month === monthNum);
+          this.modalPayment = {
+            show: true,
+            houseId: house.id,
+            houseName: house.name,
+            month: monthNum,
+            form: {
+              status: rec ? rec.status : 'paid',
+              amount: rec ? rec.amount : (house.fee || this.defaultFee),
+              paid_date: rec ? rec.paid_date || new Date().toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+              notes: rec ? rec.notes || '' : '',
+              proof_image: rec ? rec.proof_image || null : null
+            }
+          };
+        },
+
+        savePaymentModal() {
+          const { houseId, month, form } = this.modalPayment;
+          const idx = this.payments.findIndex(p => p.house_id === houseId && p.year === this.selectedYear && p.month === month);
+
+          const paymentObj = {
+            id: `PAY_${houseId}_${this.selectedYear}_${month}`,
+            house_id: houseId,
+            year: this.selectedYear,
+            month: month,
+            status: form.status,
+            amount: form.amount,
+            paid_date: form.paid_date,
+            notes: form.notes,
+            proof_image: form.proof_image
+          };
+
+          if (idx >= 0) {
+            this.payments[idx] = paymentObj;
+          } else {
+            this.payments.push(paymentObj);
+          }
+
+          this.saveToLocalStorage();
+          this.showToast('Data pembayaran diperbarui!', 'success');
+          this.modalPayment.show = false;
+        },
+
+        // COMPRESS IMAGE TO CANVAS BASE64 (Max 600px width/height, quality 0.65)
+        handleProofUpload(event) {
+          const file = event.target.files[0];
+          if (!file) return;
+
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              let width = img.width;
+              let height = img.height;
+              const maxDim = 600;
+
+              if (width > height && width > maxDim) {
+                height = Math.round(height * (maxDim / width));
+                width = maxDim;
+              } else if (height > maxDim) {
+                width = Math.round(width * (maxDim / height));
+                height = maxDim;
+              }
+
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0, width, height);
+
+              // Convert compressed canvas to Data URL (JPEG 0.65 quality ~ 30KB - 60KB)
+              this.modalPayment.form.proof_image = canvas.toDataURL('image/jpeg', 0.65);
+            };
+            img.src = e.target.result;
+          };
+          reader.readAsDataURL(file);
+        },
+
+        // CASHFLOW & BALANCE
+        calculateBalance() {
+          const totalIuran = this.payments
+            .filter(p => p.status === 'paid')
+            .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+          
+          const totalTrxIn = this.transactions
+            .filter(t => t.type === 'IN')
+            .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+
+          const totalTrxOut = this.transactions
+            .filter(t => t.type === 'OUT')
+            .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+
+          return (totalIuran + totalTrxIn) - totalTrxOut;
+        },
+
+        calculateTotalIncome() {
+          const iuranYear = this.payments
+            .filter(p => p.status === 'paid' && p.year === this.selectedYear)
+            .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+          const trxInYear = this.transactions
+            .filter(t => t.type === 'IN' && new Date(t.date).getFullYear() === this.selectedYear)
+            .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+          return iuranYear + trxInYear;
+        },
+
+        calculateTotalExpense() {
+          return this.transactions
+            .filter(t => t.type === 'OUT' && new Date(t.date).getFullYear() === this.selectedYear)
+            .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+        },
+
+        // WARGA CRUD
+        openHouseModal(house = null) {
+          if (house) {
+            this.modalHouse.isEdit = true;
+            this.modalHouse.form = { ...house };
+          } else {
+            this.modalHouse.isEdit = false;
+            this.modalHouse.form = { id: 'H-' + Date.now(), block: '', name: '', phone: '', fee: this.defaultFee, status: 'active' };
+          }
+          this.modalHouse.show = true;
+        },
+
+        saveHouse() {
+          if (this.modalHouse.isEdit) {
+            const idx = this.houses.findIndex(h => h.id === this.modalHouse.form.id);
+            if (idx > -1) this.houses[idx] = { ...this.modalHouse.form };
+            this.showToast('Data anggota diperbarui', 'success');
+          } else {
+            this.houses.push({ ...this.modalHouse.form });
+            this.showToast('Anggota baru ditambahkan', 'success');
+          }
+          this.saveToLocalStorage();
+          this.modalHouse.show = false;
+        },
+
+        deleteHouse(id) {
+          if (confirm('Hapus data anggota ini? Data pembayaran tetap tersimpan.')) {
+            this.houses = this.houses.filter(h => h.id !== id);
+            this.saveToLocalStorage();
+            this.showToast('Anggota dihapus', 'info');
+          }
+        },
+
+        // TRANSACTIONS CRUD
+        openTrxModal() {
+          this.modalTrx.form = { type: 'OUT', date: new Date().toISOString().split('T')[0], category: 'Internet / ISP (MyRepublic)', amount: 0, description: '' };
+          this.modalTrx.show = true;
+        },
+
+        saveTransaction() {
+          this.transactions.push({ id: 'TRX-' + Date.now(), ...this.modalTrx.form });
+          this.saveToLocalStorage();
+          this.showToast('Transaksi dicatat!', 'success');
+          this.modalTrx.show = false;
+        },
+
+        deleteTransaction(id) {
+          if (confirm('Hapus transaksi ini?')) {
+            this.transactions = this.transactions.filter(t => t.id !== id);
+            this.saveToLocalStorage();
+            this.showToast('Transaksi dihapus', 'info');
+          }
+        },
+
+        // WHATSAPP BILL GENERATOR
+        generateWA(house) {
+          if (!house.phone) {
+            this.showToast('Nomor WhatsApp belum diisi!', 'error');
+            return;
+          }
+
+          const unpaidMonths = [];
+          for (let m = 1; m <= 12; m++) {
+            if (!this.isPaid(house.id, m)) unpaidMonths.push(this.months[m - 1]);
+          }
+
+          const fee = house.fee || this.defaultFee;
+          let text = `Halo *${house.name}* (${house.block}),\n\n`;
+          text += `Berikut rekap iuran kas tahun *${this.selectedYear}*:\n`;
+          
+          if (unpaidMonths.length === 0) {
+            text += `Status: *LUNAS SELURUH BULAN* 👍. Terima kasih!`;
+          } else {
+            text += `Tunggakan Bulan: *${unpaidMonths.join(', ')}*\n`;
+            text += `Total (${unpaidMonths.length} Bulan): *${this.formatRupiah(unpaidMonths.length * fee)}*\n\n`;
+            text += `Mohon segera melakukan pembayaran. Terima kasih 🙏`;
+          }
+
+          const cleanPhone = house.phone.replace(/[^0-9]/g, '');
+          window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`, '_blank');
+        },
+
+        // DIRECT JSON BACKUP & RESTORE
+        backupData() {
+          try {
+            const backupPayload = {
+              version: '1.0',
+              exportDate: new Date().toISOString(),
+              houses: this.houses,
+              payments: this.payments,
+              transactions: this.transactions
+            };
+
+            const dataStr = JSON.stringify(backupPayload, null, 2);
+            const fileName = `backup_iuran_${new Date().toISOString().slice(0,10)}.json`;
+
+            this.lastBackupDate = new Date().toLocaleString('id-ID');
+            this.saveToLocalStorage();
+
+            // Direct File Download (100% Reliable across all browsers & OS)
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            this.showToast('File backup berhasil diunduh ke HP!', 'success');
+          } catch(err) {
+            this.showToast('Gagal membuat file backup', 'error');
+          }
+        },
+
+        importData(event) {
+          const file = event.target.files[0];
+          if (!file) return;
+
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            try {
+              const data = JSON.parse(e.target.result);
+              if (data.houses && data.payments) {
+                if (confirm(`Pulihkan data backup dari tanggal ${new Date(data.exportDate).toLocaleString('id-ID')}? Data saat ini akan diperbarui.`)) {
+                  this.houses = data.houses;
+                  this.payments = data.payments;
+                  this.transactions = data.transactions || [];
+                  this.saveToLocalStorage();
+                  this.showToast('Data berhasil dipulihkan!', 'success');
+                }
+              } else {
+                this.showToast('Format file JSON tidak valid', 'error');
+              }
+            } catch(err) {
+              this.showToast('Gagal membaca file JSON', 'error');
+            }
+            event.target.value = '';
+          };
+          reader.readAsText(file);
+        },
+
+        // UTILITY HELPERS
+        formatRupiah(val) {
+          return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(val || 0);
+        },
+
+        formatDate(dateStr) {
+          if (!dateStr) return '-';
+          return new Date(dateStr).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+        },
+
+        showToast(message, type = 'info') {
+          const id = Date.now();
+          this.toasts.push({ id, message, type, visible: true });
+          setTimeout(() => {
+            const t = this.toasts.find(item => item.id === id);
+            if (t) t.visible = false;
+          }, 3000);
+        }
+      }
+    }
+  </script>
+</body>
+</html>
